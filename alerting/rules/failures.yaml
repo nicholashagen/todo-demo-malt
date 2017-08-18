@@ -1,0 +1,22 @@
+es_host: localhost
+es_port: 9200
+name: Failures
+type: frequency
+index: logstash-*
+num_events: 20
+timeframe:
+    minutes: 15
+filter:
+- query:
+    query_string:
+      query: "message:'LOGIN FAIL'"
+alert:
+- "email"
+email:  
+- "user@gmail.com"
+smtp_host: "smtp.gmail.com"
+smtp_port: 587
+smtp_ssl: false
+smtp_auth_file: "smtp.yaml"
+from_addr: "user@gmail.com"
+

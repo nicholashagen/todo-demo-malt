@@ -1,0 +1,148 @@
+version: '3'
+services:
+  influxdb:
+    image: tutum/influxdb
+    container_name: influxdb
+    ports:
+      - "8083:8083"
+      - "8086:8086"
+      - "8090:8090"
+    environment:
+      ADMIN_USER: root
+      INFLUXDB_INIT_PWD: password
+      PRE_CREATE_DB: metrics
+
+  telegraf:
+    image: telegraf:latest
+    container_name: telegraf
+    links:
+      - influxdb
+    volumes:
+      - ./telegraf.conf:/etc/telegraf/telegraf.conf:ro
+
+  grafana:
+    image: grafana/grafana:latest
+    container_name: grafana
+    ports:
+      - "3000:3000"
+    links:
+      - influxdb
+    volumes:
+     - ./grafana/data:/var/lib/grafana:rw
+    environment:
+      GF_SECURITY_ADMIN_PASSWORD: password
+
+  zookeeper:
+    image: "zookeeper"
+    ports:
+      - "2181:2181"
+    environment:
+      MYID: 1
+      SERVERS: zookeeper
+
+  kafka:
+    image: "wurstmeister/kafka"
+    depends_on:
+      - zookeeper
+    ports:
+      - "9092:9092"
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock
+    environment:
+      # KAFKA_BROKER_ID: 1
+      # KAFKA_CREATE_TOPICS: "logs_auth-api-service:1:1"
+      # KAFKA_ADVERTISED_HOST_NAME: 192.168.86.248
+      # KAFKA_ADVERTISED_PORT: 9092
+      # KAFKA_LOG_RETENTION_HOURS: "168"
+      # KAFKA_LOG_RETENTION_BYTES: "100000000"
+      KAFKA_ZOOKEEPER_CONNECT: zookeeper:2181
+
+  elasticsearch:
+    image: elasticsearch:5.5.1
+    ports:
+      - "9200:9200"
+    volumes:
+      - ./elasticsearch/data:/usr/share/elasticsearch/data
+    
+  kibana:
+    image: kibana:5.5.1
+    ports: 
+      - 5601:5601
+    depends_on:
+      - 'elasticsearch'
+
+  logstash:
+    image: logstash:5.5.1
+    volumes:
+      - ./logstash.conf:/config-dir/logstash.conf
+    command: "logstash -f /config-dir/logstash.conf"
+    depends_on:
+      - 'kafka'
+      - 'elasticsearch'
+
+  mysql:
+    image: mariadb
+    ports:
+     - 3306:3306
+    expose:
+     - 3306
+    volumes:
+     - ./mysql/data:/var/lib/mysql:rw
+     - ./mysql/schema.sql:/docker-entrypoint-initdb.d/schema.sql:ro
+    environment:
+      MYSQL_ALLOW_EMPTY_PASSWORD: "yes"
+
+  eureka-service:
+    image: "logging-demo/eureka-service:latest"
+    ports:
+     - "8761:8761"
+
+  zipkin-service:
+    image: "logging-demo/zipkin-service:latest"
+    depends_on:
+     - kafka
+    ports:
+     - "9411:9411"
+
+  auth-api-service:
+    image: "logging-demo/auth-api-service:latest"
+    depends_on:
+      - kafka
+      - influxdb
+      - eureka-service
+      - zipkin-service
+    ports:
+     - "7070:7070"
+
+  friend-api-service:
+    image: "logging-demo/friend-api-service:latest"
+    depends_on:
+      - kafka
+      - influxdb
+      - eureka-service
+      - zipkin-service
+    ports:
+     - "7072:7072"
+
+  task-api-service:
+    image: "logging-demo/task-api-service:latest"
+    depends_on:
+      - kafka
+      - influxdb
+      - eureka-service
+      - zipkin-service
+    ports:
+     - "7075:7075"
+
+  todo-app:
+    image: "logging-demo/todo-app:latest"
+    depends_on:
+      - kafka
+      - influxdb
+      - eureka-service
+      - zipkin-service
+      - friend-api-service
+      - task-api-service
+      - auth-api-service
+    ports:
+     - "7071:7071"
